@@ -31,7 +31,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 EARLY_EXIT_ON_GOOD_SAMPLES = True
 SAMPLE_CHECK_FREQUENCY = 1
 
-print(f"CycleGAN Training - {EPOCHS} epochs, {IMG_SIZE}x{IMG_SIZE} images")
+print(f"GAN Training - {EPOCHS} epochs, {IMG_SIZE}x{IMG_SIZE} images")
 print(f"Device: {DEVICE}")
 
 # Data augmentation applies random transformations to increase training data diversity
@@ -170,8 +170,7 @@ class UNetGenerator(nn.Module):
         x = self.bottleneck(x2)  # Make core creative decisions
         
         x = self.up1(x)
-        # Skip connection: combine current work with initial sketch (preserves fine details)
-        x = torch.cat([x, x1], dim=1)  # This is why up2 expects 512 channels
+        x = torch.cat([x, x1], dim=1)
         x = self.up2(x)
         x = self.up3(x)
         x = self.up4(x)
@@ -336,6 +335,16 @@ def check_diversity(generator, device, z_dim, num_samples=5):
 
     return diversity_score
 
+# Final diversity check - safety measure to ensure we have enough images to compare
+if len(diversity_samples) > 1:
+    diversity_score = 0
+    num_comparisons = 0
+    for i in range(len(diversity_samples)):
+        for j in range(i+1, len(diversity_samples)):
+            diff = torch.abs(diversity_samples[i] - diversity_samples[j]).mean().item()
+            diversity_score += diff
+            num_comparisons += 1
+
 print(f"Starting training...")
 print(f"Dataset size: {len(dataset)} images")
 
@@ -445,16 +454,6 @@ with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zi
         zipf.writestr(img_filename, img_buffer.getvalue())
 
 torch.set_grad_enabled(True)
-
-# Final diversity check - safety measure to ensure we have enough images to compare
-if len(diversity_samples) > 1:
-    diversity_score = 0
-    num_comparisons = 0
-    for i in range(len(diversity_samples)):
-        for j in range(i+1, len(diversity_samples)):
-            diff = torch.abs(diversity_samples[i] - diversity_samples[j]).mean().item()
-            diversity_score += diff
-            num_comparisons += 1
 
 if os.path.exists(zip_path):
     zip_size_mb = os.path.getsize(zip_path) / (1024 * 1024)
